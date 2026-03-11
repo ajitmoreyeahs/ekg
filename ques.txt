@@ -1,0 +1,48 @@
+🔴 SoD Violations (use real usernames from your data)
+1. Does user pjunker have an SoD violation?
+(Expected: Yes — has both PO-Creator ZC:P2P:PO_CREATOR________:1000 and PO-Releaser, violates SoD Rule 0001)
+2. Why can't the same user create and approve a Purchase Order?
+(Expected: Explanation of SoD Scenario #1 — PO Creator vs PO Approver conflict, ME21N vs ME28)
+3. What is SoD conflict scenario number 2 in the system?
+(Expected: Prevent GR Processor from processing Invoice — MIGO vs MIRO)
+4. If I add transaction ME29 to role ZC:P2P:PO_CREATOR________:1000, will it create a new SoD conflict?
+(Expected: Yes — triggers SoD001 "Create vs Approve Purchase Orders")
+5. Show me all SoD conflicts for role ZC:P2P:PO_CREATOR________:1000
+(Expected: SoD001 — ME21N/ME22N conflicts with ME28/ME29)
+
+🟡 Role & Permission Queries
+6. What transactions does the PO Creator role ZC:P2P:PO_CREATOR________:0000 include?
+(Expected: ME21N — Purchase Order Creation, from Functional Role Matrix)
+7. What is the difference between ZRM:P2P:PO_CREATOR_______:0000 and ZC:P2P:PO_CREATOR________:0000?
+(Expected: Functional role vs Business role, from Role Matrix and Business Template)
+8. Which roles have transaction ME28 assigned?
+(Expected: PO Releaser / PO Approver roles)
+9. What roles are included in the Finance Manager business role ZC:FIN:FINANCE_MANAGER___:0000?
+(Expected: FI Period End Closing, Display Finance — from Business Role Template)
+10. What is the role ZRM:FI_:GR_PROCESSOR_____:0000 used for and what transaction does it include?
+(Expected: Goods Receipt processing using MIGO transaction)
+
+🟢 User Queries (real users from your data)
+11. What SAP role is assigned to user jdevlin and in which country are they based?
+(Expected: ZC:S&D:SALES_ANALYST_____:2000, Sales & Marketing, New York, United States)
+12. List all users in the Procurement & Supply Chain function based in the United Kingdom
+(Expected: pjunker — Philipp Junker, London)
+13. What is the SAP role ID assigned to user pklasson?
+(Expected: ZC:P2P:PO_CREATOR________:4000, Germany)
+14. How many users in the system have an L3 level and what function are they in?
+(Expected: 49 users, Manufacturing — Warehouse Manager roles)
+15. Who is the CEO of the organisation and what is their username?
+(Expected: Francis Trombley, ftrombley, reports to themselves as manager)
+
+🟣 General / Policy / Architecture
+16. What are the four primary personas being tested in the EKG pilot?
+(Expected: From V3.docx — End User, Process Owner, Role Owner, SAP Security Analyst)
+17. What data sources are used in the EKG MVP and what does each one store?
+(Expected: SuccessFactors, Active Directory, Lean IX/Signavio, SAP S4Hana — from V3.docx)
+18. What is the intent when a user says "I have joined the procurement team in the UK"?
+(Expected: Self Attribute Verification / Validate user request, checks Entra ID attributes)
+19. What Neo4j query would be used to find a user's function and country?
+(Expected: MATCH (u:User {userName: $authenticatedUser}) RETURN u.function, u.country from Chatbot Intents)
+20. What happens when a user with PO-Releaser role requests access to PO-Creator role ZC:P2P:PO_CREATOR________:1000?
+(Expected: Blocked — SoD Rule 0001 CRITICAL violation, options: revoke PO-Releaser or raise risk acceptance request to CFO)
+
