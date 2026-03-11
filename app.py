@@ -281,7 +281,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("### Configuration")
-    google_api_key = 'AIzaSyB2x0bRfm9f26Az9dPJZSwOPGLrOBfSq4w'
+    google_api_key = 'AIzaSyBBkqqfeZ4fcvVj3RHHgHkWQaXVtZ_9dE0'
     gemini_model = st.selectbox(
         "Gemini Model",
         ["gemini-2.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
