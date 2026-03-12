@@ -12,13 +12,61 @@ import os
 import re
 import time
 import random
-from typing import TypedDict
+import json
+import boto3
+from typing import TypedDict, Any
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langgraph.graph import StateGraph, END
+
+
+# =============================================================
+# CUSTOM BEDROCK LLM USING MESSAGES API (CONVERSE)
+# =============================================================
+
+class BedrockMessagesLLM(LLM):
+    """Custom LLM wrapper for Bedrock using the Messages API (converse)."""
+    
+    model_id: str
+    region: str = "eu-west-2"
+    max_tokens: int = 512
+    temperature: float = 0.0
+    
+    @property
+    def _llm_type(self) -> str:
+        return "bedrock-messages"
+    
+    def _call(
+        self,
+        prompt: str,
+        stop=None,
+        run_manager: CallbackManagerForLLMRun = None,
+        **kwargs: Any,
+    ) -> str:
+        """Call the Bedrock Messages API (converse)."""
+        client = boto3.client(
+            'bedrock-runtime',
+            region_name=self.region,
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        )
+        
+        messages = [{"role": "user", "content": [{"text": prompt}]}]
+        
+        response = client.converse(
+            modelId=self.model_id,
+            messages=messages,
+            inferenceConfig={
+                "maxTokens": self.max_tokens,
+                "temperature": self.temperature,
+            }
+        )
+        
+        return response['output']['message']['content'][0]['text']
 
 
 # =============================================================
@@ -128,7 +176,7 @@ class AgentState(TypedDict):
 
 def build_graph(
     vs_dir: str = "./vectorstores",
-    gemini_model: str = "gemini-1.5-flash",
+    bedrock_model_id: str = "eu.anthropic.claude-opus-4-5-20251101-v1:0s",
     top_k: int = 4,   # reduced from 6 -> saves tokens on free tier
 ):
     print(f"[graph] Loading embedding model...")
@@ -149,12 +197,12 @@ def build_graph(
         allow_dangerous_deserialization=True,
     )
 
-    print(f"[graph] Initializing Gemini: {gemini_model}")
-    llm = ChatGoogleGenerativeAI(
-        model=gemini_model,
+    print(f"[graph] Initializing Bedrock Claude Opus: {bedrock_model_id}")
+    llm = BedrockMessagesLLM(
+        model_id=bedrock_model_id,
+        region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "eu-west-2")),
+        max_tokens=512,
         temperature=0,
-        google_api_key=os.environ.get("GOOGLE_API_KEY"),
-        max_output_tokens=512,   # cap output tokens to save quota
     )
 
     # =========================================================
@@ -202,7 +250,7 @@ def build_graph(
         print(f"[graph] Step 1/4 - Classifying intent...")
         chain = CLASSIFY_PROMPT | llm
         result = llm_invoke_with_retry(chain, {"question": state["question"]}, step_label="classify")
-        intent = result.content.strip().lower().split()[0]  # take first word only
+        intent = result.strip().lower().split()[0]  # take first word only
         if intent not in ("sod_check", "role_query", "user_query", "general"):
             intent = "general"
         print(f"[graph] Intent: {intent}")
@@ -230,7 +278,7 @@ def build_graph(
             "context": format_docs_trimmed(state["docs_a"]),
             "question": state["question"],
         }, step_label="answer_A")
-        answer_a = res_a.content
+        answer_a = res_a
         print(f"[graph] Answer A ready ({len(answer_a)} chars)")
 
         # Small pause between calls to respect per-minute rate limits
@@ -241,7 +289,7 @@ def build_graph(
             "context": format_docs_trimmed(state["docs_b"]),
             "question": state["question"],
         }, step_label="answer_B")
-        answer_b = res_b.content
+        answer_b = res_b
         print(f"[graph] Answer B ready ({len(answer_b)} chars)")
 
         return {**state, "answer_a": answer_a, "answer_b": answer_b}
@@ -255,7 +303,7 @@ def build_graph(
             "answer_b": state["answer_b"],
             "question": state["question"],
         }, step_label="compare")
-        raw = result.content
+        raw = result
 
         winner = "Both"
         reason = ""

@@ -4,6 +4,9 @@ Run:  streamlit run app.py
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
+os.environ["AWS_DEFAULT_REGION"] = os.environ.get("AWS_REGION", "eu-west-2")
 import time
 import streamlit as st
 
@@ -166,8 +169,27 @@ html, body, [class*="css"] {
 .emb-body {
     color: #cbd5e1;
     font-size: 0.9rem;
-    line-height: 1.75;
-    white-space: pre-wrap;
+    line-height: 1.6;
+}
+.emb-body h1, .emb-body h2, .emb-body h3,
+.emb-body h4, .emb-body h5, .emb-body h6 {
+    font-size: 0.95rem !important;
+    font-weight: 600;
+    color: #e2e8f0;
+    margin: 8px 0 4px 0;
+}
+.emb-body ul, .emb-body ol {
+    padding-left: 18px;
+    margin: 4px 0;
+}
+.emb-body li { margin: 2px 0; }
+.emb-body strong { color: #e2e8f0; }
+.emb-body code {
+    background: #1e2330;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.82rem;
+    font-family: 'IBM Plex Mono', monospace;
 }
 
 /* ── source pills ── */
@@ -210,8 +232,27 @@ html, body, [class*="css"] {
 .winner-body {
     color: #d1fae5;
     font-size: 0.92rem;
-    line-height: 1.75;
-    white-space: pre-wrap;
+    line-height: 1.6;
+}
+.winner-body h1, .winner-body h2, .winner-body h3,
+.winner-body h4, .winner-body h5, .winner-body h6 {
+    font-size: 0.95rem !important;
+    font-weight: 600;
+    color: #d1fae5;
+    margin: 8px 0 4px 0;
+}
+.winner-body ul, .winner-body ol {
+    padding-left: 18px;
+    margin: 4px 0;
+}
+.winner-body li { margin: 2px 0; }
+.winner-body strong { color: #ecfdf5; }
+.winner-body code {
+    background: #1a3a28;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.82rem;
+    font-family: 'IBM Plex Mono', monospace;
 }
 .winner-verdict {
     margin-top: 14px;
@@ -280,15 +321,12 @@ with st.sidebar:
     st.markdown("## 🔐 EKG IAM Assistant")
     st.markdown("---")
 
-    st.markdown("### Configuration")
-    google_api_key = 'AIzaSyB2x0bRfm9f26Az9dPJZSwOPGLrOBfSq4w'
-    gemini_model = st.selectbox(
-        "Gemini Model",
-        ["gemini-2.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
-        index=0,
-        help="gemini-1.5-flash recommended for free tier (1500 req/day)"
-    )
-    st.caption("Free tier tip: use gemini-1.5-flash for best quota")
+    st.markdown("### AWS Bedrock Configuration (from .env)")
+    bedrock_model_id = os.environ.get("BEDROCK_MODEL_ID", "eu.anthropic.claude-opus-4-5-20251101-v1:0s")
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", "")
+    aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+    aws_region = os.environ.get("AWS_REGION", "eu-west-2")
+    bedrock_profile_arn = os.environ.get("BEDROCK_PROFILE_ARN", "")
 
     vs_dir = st.text_input(
         "Vector Store Path",
@@ -353,11 +391,20 @@ if "graph" not in st.session_state:
 
 # ── Load graph ────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
-def get_graph(vs_dir, gemini_model, google_api_key, top_k):
-    os.environ["GOOGLE_API_KEY"] = google_api_key
-    print(f"[app] Loading graph: model={gemini_model}, vs_dir={vs_dir}, top_k={top_k}")
+def get_graph(vs_dir, bedrock_model_id, aws_access_key_id, aws_secret_access_key, aws_region, top_k):
+    # Set environment variables for Bedrock
+    os.environ["AWS_ACCESS_KEY_ID"] = aws_access_key_id
+    os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret_access_key
+    os.environ["AWS_REGION"] = aws_region
+    os.environ["AWS_DEFAULT_REGION"] = aws_region
+    os.environ["BEDROCK_MODEL_ID"] = bedrock_model_id
+    print(f"[app] Loading graph: model={bedrock_model_id}, vs_dir={vs_dir}, top_k={top_k}")
     from graph import build_graph
-    g = build_graph(vs_dir=vs_dir, gemini_model=gemini_model, top_k=top_k)
+    g = build_graph(
+        vs_dir=vs_dir,
+        bedrock_model_id=bedrock_model_id,
+        top_k=top_k
+    )
     print("[app] Graph loaded successfully")
     return g
 
@@ -493,8 +540,8 @@ if "pending_question" in st.session_state:
 
 # ── Process query ─────────────────────────────────────────────
 if send_clicked and user_input.strip():
-    if not google_api_key:
-        st.error("⚠️ Please enter your Google API Key in the sidebar.")
+    if not aws_access_key_id or not aws_secret_access_key:
+        st.error("⚠️ AWS credentials missing. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in your environment or .env file.")
         st.stop()
 
     if not os.path.isdir(vs_dir) or (
@@ -511,13 +558,13 @@ if send_clicked and user_input.strip():
     progress_bar = st.empty()
 
     try:
-        rag_app = get_graph(vs_dir, gemini_model, google_api_key, top_k)
+        rag_app = get_graph(vs_dir, bedrock_model_id, aws_access_key_id, aws_secret_access_key, aws_region, top_k)
         print(f"[app] Invoking graph for: {user_input}")
 
         steps = [
             (0.15, "Step 1/4 — Classifying intent..."),
             (0.40, "Step 2/4 — Retrieving documents from both embeddings..."),
-            (0.65, "Step 3/4 — Generating answers (A & B) with Gemini..."),
+            (0.65, "Step 3/4 — Generating answers (A & B) with Claude Opus..."),
             (0.90, "Step 4/4 — Comparing results & selecting best answer..."),
         ]
 
@@ -554,7 +601,7 @@ if send_clicked and user_input.strip():
             padding:14px 18px;font-family:IBM Plex Mono,monospace;font-size:0.82rem;color:#60a5fa;">
   ⏳ {label}
   <span style="color:#334155;font-size:0.72rem;float:right;">
-    Free-tier: auto-retrying on quota limits
+    Bedrock: Claude Opus
   </span>
 </div>""", unsafe_allow_html=True)
                 progress_bar.progress(pct)
@@ -582,18 +629,7 @@ if send_clicked and user_input.strip():
         print(f"[app] ERROR:\n{tb}")
         status_box.empty()
         progress_bar.empty()
-        err_str = str(e)
-        if "QUOTA_EXHAUSTED" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            st.warning(
-                "**Gemini Free-Tier Quota Exceeded**\n\n"
-                "The app already auto-retried with the delay Gemini requested.\n\n"
-                "**To fix:**\n"
-                "- Switch model to `gemini-1.5-flash` in the sidebar (1,500 req/day free)\n"
-                "- Or wait 1-2 minutes for the per-minute quota to reset\n"
-                "- Or add billing at https://aistudio.google.com"
-            )
-        else:
-            st.error(f"Error: {e}")
-            st.code(tb, language="text")
+        st.error(f"Error: {e}")
+        st.code(tb, language="text")
 
     st.rerun()
